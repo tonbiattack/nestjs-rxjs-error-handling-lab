@@ -13,12 +13,15 @@ describe('NestJS BFF /items', () => {
   let app: INestApplication;
   let externalApi: Server;
   let externalApiUrl: string;
+  let externalApiStatus = 500;
 
   beforeAll(async () => {
     externalApi = createServer((_request, response) => {
-      response.statusCode = 500;
+      response.statusCode = externalApiStatus;
       response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({ code: 'EXTERNAL_API_DOWN' }));
+      response.end(externalApiStatus === 200
+        ? JSON.stringify({ items: [] })
+        : JSON.stringify({ code: 'EXTERNAL_API_DOWN' }));
     });
     await new Promise<void>((resolve) => externalApi.listen(0, resolve));
     externalApiUrl = `http://127.0.0.1:${(externalApi.address() as AddressInfo).port}/items`;
@@ -34,6 +37,15 @@ describe('NestJS BFF /items', () => {
   afterAll(async () => {
     await app.close();
     await new Promise<void>((resolve, reject) => externalApi.close((error) => error ? reject(error) : resolve()));
+  });
+
+  it('外部APIが正常な0件を返した場合は200と空配列を返す', async () => {
+    externalApiStatus = 200;
+    const response = await fetch(`${await app.getUrl()}/items`);
+
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toEqual([]);
+    externalApiStatus = 500;
   });
 
   it('外部APIの500をBFFの502として返す', async () => {
